@@ -67,7 +67,7 @@
         }
     ],
     "position_adjustment_enable": true,
-    "max_entry_position_adjustment": 2,
+    "max_entry_position_adjustment": 3,
     "telegram": {
         "enabled": true,
         "token": "secret",

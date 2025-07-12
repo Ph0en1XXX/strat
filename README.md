@@ -16,8 +16,12 @@ an example configuration ready for testing.
   data does not introduce lookahead bias.
 
 This strategy relies on an ATR-driven ROI target (`custom_roi`) and stepped stop-loss
-levels that can be tuned via hyperparameters. Minimal ROI is intentionally disabled to
-avoid conflicts with the dynamic ROI logic.
+levels that can be tuned via hyperparameters. `minimal_roi` is set to `{}` to avoid
+conflicts with the dynamic ROI logic.
+
+Recent changes tighten the base stoploss to `-6%`, lower the DCA gap for calm markets
+and use more aggressive BTC-drop exits. `max_entry_position_adjustment` is increased
+to 3 for flexibility.
 
 Testing and hyperoptimization are recommended before live deployment.
 
