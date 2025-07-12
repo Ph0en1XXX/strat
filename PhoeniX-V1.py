@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
-Strategy005Pro – rev‑16 (dominance & stepped‑SL, adaptive ROI)
-============================================================
+PhoeniX V1 – adaptive ROI with dominance filter
+===============================================
 
 Модификации по сравнению с rev‑15:
 1. **EMA‑200 slope** теперь рассчитывается в относительных процентах (`pct_change`) — это делает фильтр более масштаб‑инвариантным.
@@ -25,7 +25,7 @@ from freqtrade.strategy import IStrategy, stoploss_from_open, merge_informative_
 from freqtrade.strategy.hyper import IntParameter, DecimalParameter
 
 
-class Strategy005ProRev16(IStrategy):
+class PhoenixV1(IStrategy):
     """Trend‑following стратегия 2025‑26 с BTC‑dominance фильтром, stepped‑SL и DCA‑поддержкой."""
 
     # ---- Общие настройки ----------------------------------------------

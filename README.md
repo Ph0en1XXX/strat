@@ -1,6 +1,6 @@
 # Strategy repository
 
-This repository contains a custom Freqtrade strategy `Strategy005ProRev16`.
+This repository contains a custom Freqtrade strategy `PhoenixV1` (file `PhoeniX-V1.py`).
 
 ## Notes
 
