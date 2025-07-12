@@ -1,6 +1,7 @@
 # Strategy repository
 
-This repository contains a custom Freqtrade strategy `Strategy005ProRev16`.
+This repository contains a custom Freqtrade strategy `Strategy005ProRev16` with
+an example configuration ready for testing.
 
 ## Notes
 
@@ -19,3 +20,10 @@ levels that can be tuned via hyperparameters. Minimal ROI is intentionally disab
 avoid conflicts with the dynamic ROI logic.
 
 Testing and hyperoptimization are recommended before live deployment.
+
+## Usage
+
+1. Copy `config.json` and update your API keys and Telegram credentials.
+2. Place `PhoeniX-V1.py` in your `user_data/strategies` folder.
+3. Run backtesting with `freqtrade backtesting -c config.json -s Strategy005ProRev16`.
+4. Review the results and adjust parameters as needed.

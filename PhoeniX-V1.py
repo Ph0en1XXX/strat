@@ -42,13 +42,13 @@ class Strategy005ProRev16(IStrategy):
     max_entry_position_adjustment = 2
 
     # Базовый стоп‑лосс и параметры динамического ROI
-    base_stoploss = DecimalParameter(-0.12, -0.05, default=-0.09,
+    base_stoploss = DecimalParameter(-0.12, -0.05, default=-0.08,
                                      space="sell", optimize=True)
 
     use_custom_roi = True
-    dynamic_roi_mult = DecimalParameter(1.0, 2.0, default=1.2,
+    dynamic_roi_mult = DecimalParameter(1.0, 2.0, default=1.5,
                                         space="sell", optimize=False)
-    min_dynamic_roi = DecimalParameter(0.01, 0.03, default=0.015,
+    min_dynamic_roi = DecimalParameter(0.01, 0.03, default=0.02,
                                        space="sell", optimize=False)
 
     @property
@@ -76,13 +76,13 @@ class Strategy005ProRev16(IStrategy):
     trailing_stop = False  # конфликтует с custom_stoploss
 
     # ---- Гипер‑параметры ----------------------------------------------
-    buy_min_atr_z = DecimalParameter(1.0, 3.5, default=1.7, space="buy", optimize=True)
-    buy_adx_min = IntParameter(22, 38, default=27, space="buy", optimize=True)
-    buy_vol_rel_min = DecimalParameter(1.2, 2.0, default=1.5, space="buy", optimize=True)
+    buy_min_atr_z = DecimalParameter(1.0, 3.5, default=1.5, space="buy", optimize=True)
+    buy_adx_min = IntParameter(22, 38, default=25, space="buy", optimize=True)
+    buy_vol_rel_min = DecimalParameter(1.2, 2.0, default=1.3, space="buy", optimize=True)
 
     atr_window = IntParameter(25, 60, default=28, space="buy", optimize=True)
     # Расширяем диапазон для более частых дозакупок на спокойных активах
-    dca_gap_pct = DecimalParameter(0.4, 1.2, default=0.8, space="buy", optimize=True)
+    dca_gap_pct = DecimalParameter(0.4, 1.2, default=0.6, space="buy", optimize=True)
 
     # уровни прибыли и соответствующие им значения stoploss_from_open
     sl_profit_1 = DecimalParameter(0.005, 0.03, default=0.01,
@@ -131,7 +131,7 @@ class Strategy005ProRev16(IStrategy):
     btc_drop3h_exit = DecimalParameter(-0.10, -0.05, default=-0.07, space="sell", optimize=False)
     btc_drop30m_exit = DecimalParameter(-0.03, -0.01, default=-0.02, space="sell", optimize=False)
 
-    max_trade_minutes = IntParameter(240, 720, default=420, space="sell", optimize=True)
+    max_trade_minutes = IntParameter(240, 720, default=480, space="sell", optimize=True)
 
     flat_adx_max = IntParameter(12, 18, default=15, space="sell", optimize=False)
 
