@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
-Strategy005Pro – rev‑16 (dominance & stepped‑SL, adaptive ROI)
-============================================================
+PhoeniX V1 – adaptive ROI with dominance filter
+===============================================
 
 Модификации по сравнению с rev‑15:
 1. **EMA‑200 slope** теперь рассчитывается в относительных процентах (`pct_change`) — это делает фильтр более масштаб‑инвариантным.
@@ -21,11 +21,11 @@ import talib.abstract as ta
 from pandas import DataFrame
 
 from freqtrade.persistence import Trade
-from freqtrade.strategy import IStrategy, stoploss_from_open
+from freqtrade.strategy import IStrategy, stoploss_from_open, merge_informative_pair
 from freqtrade.strategy.hyper import IntParameter, DecimalParameter
 
 
-class Strategy005ProRev16(IStrategy):
+class PhoenixV1(IStrategy):
     """Trend‑following стратегия 2025‑26 с BTC‑dominance фильтром, stepped‑SL и DCA‑поддержкой."""
 
     # ---- Общие настройки ----------------------------------------------
@@ -38,7 +38,8 @@ class Strategy005ProRev16(IStrategy):
 
     # BTC dominance
     use_btcd_filter: bool = True  # можно выключить, если нет фида
-    btcd_dom_threshold: float = 2.0  # %
+    btcd_dom_threshold = DecimalParameter(1.0, 4.0, default=2.0,
+                                          space="sell", optimize=True)
     btcd_lookback: int = 24  # кол-во свечей informative_timeframe для расчёта изменения доминанса
 
     can_short = False
@@ -49,17 +50,39 @@ class Strategy005ProRev16(IStrategy):
 
     max_entry_position_adjustment = 2
 
-    # ROI‑grid
-    minimal_roi = {
-        "0": 0.10,
-        "60": 0.06,
-        "120": 0.04,
-        "480": 0
-    }
+    # Базовый стоп‑лосс и параметры динамического ROI
+    base_stoploss = DecimalParameter(-0.12, -0.05, default=-0.09,
+                                     space="sell", optimize=True)
 
-    stoploss = -0.09
+    use_custom_roi = True
+    dynamic_roi_mult = DecimalParameter(1.0, 2.0, default=1.2,
+                                        space="sell", optimize=False)
+    min_dynamic_roi = DecimalParameter(0.01, 0.03, default=0.015,
+                                       space="sell", optimize=False)
 
-    trailing_stop = False  # конфликтует с custom_stoploss – оставляем False
+    @property
+    def stoploss(self) -> float:
+        """Базовый стоп‑лосс для стратеги."""
+        return self.base_stoploss.value
+
+    def custom_roi(
+        self,
+        pair: str,
+        trade: Trade,
+        current_time: datetime,
+        trade_duration: int,
+        entry_tag: str,
+        side: str,
+        **kwargs,
+    ) -> float:
+        """Dynamic ROI based on recent ATR volatility."""
+        df = self.dp.get_pair_dataframe(pair=pair, timeframe=self.timeframe)
+        if df is not None and "atr_pct" in df.columns:
+            atr_pct = df["atr_pct"].iloc[-1]
+            return max(atr_pct * self.dynamic_roi_mult.value / 100, self.min_dynamic_roi.value)
+        return self.min_dynamic_roi.value
+
+    trailing_stop = False  # конфликтует с custom_stoploss
 
     # ---- Гипер‑параметры ----------------------------------------------
     buy_min_atr_z = DecimalParameter(1.0, 3.5, default=1.7, space="buy", optimize=True)
@@ -67,7 +90,55 @@ class Strategy005ProRev16(IStrategy):
     buy_vol_rel_min = DecimalParameter(1.2, 2.0, default=1.5, space="buy", optimize=True)
 
     atr_window = IntParameter(25, 60, default=28, space="buy", optimize=True)
-    dca_gap_pct = DecimalParameter(0.6, 1.0, default=0.8, space="buy", optimize=True)
+    # Расширяем диапазон для более частых дозакупок на спокойных активах
+    dca_gap_pct = DecimalParameter(0.4, 1.2, default=0.8, space="buy", optimize=True)
+
+    # уровни прибыли и соответствующие им значения stoploss_from_open
+    sl_profit_1 = DecimalParameter(0.005, 0.03, default=0.01,
+                                  space="sell", optimize=True)
+    sl_profit_2 = DecimalParameter(0.01, 0.05, default=0.02,
+                                  space="sell", optimize=True)
+    sl_profit_3 = DecimalParameter(0.02, 0.08, default=0.04,
+                                  space="sell", optimize=True)
+    sl_profit_4 = DecimalParameter(0.05, 0.12, default=0.07,
+                                  space="sell", optimize=True)
+    sl_profit_5 = DecimalParameter(0.08, 0.20, default=0.12,
+                                  space="sell", optimize=True)
+
+    sl_stop_1 = DecimalParameter(0.0, 0.01, default=0.0,
+                                 space="sell", optimize=True)
+    sl_stop_2 = DecimalParameter(0.01, 0.03, default=0.015,
+                                 space="sell", optimize=True)
+    sl_stop_3 = DecimalParameter(0.02, 0.05, default=0.03,
+                                 space="sell", optimize=True)
+    sl_stop_4 = DecimalParameter(0.03, 0.07, default=0.05,
+                                 space="sell", optimize=True)
+    sl_stop_5 = DecimalParameter(0.05, 0.12, default=0.10,
+                                 space="sell", optimize=True)
+
+    @property
+    def sl_profit_levels(self) -> list:
+        return [
+            self.sl_profit_1.value,
+            self.sl_profit_2.value,
+            self.sl_profit_3.value,
+            self.sl_profit_4.value,
+            self.sl_profit_5.value,
+        ]
+
+    @property
+    def sl_stop_values(self) -> list:
+        return [
+            self.sl_stop_1.value,
+            self.sl_stop_2.value,
+            self.sl_stop_3.value,
+            self.sl_stop_4.value,
+            self.sl_stop_5.value,
+        ]
+
+    # пороги резкой просадки BTC для принудительного выхода
+    btc_drop3h_exit = DecimalParameter(-0.10, -0.05, default=-0.07, space="sell", optimize=False)
+    btc_drop30m_exit = DecimalParameter(-0.03, -0.01, default=-0.02, space="sell", optimize=False)
 
     max_trade_minutes = IntParameter(240, 720, default=420, space="sell", optimize=True)
 
@@ -79,9 +150,10 @@ class Strategy005ProRev16(IStrategy):
             {
                 "method": "MaxDrawdown",
                 "lookback_period_candles": 48,
-                "trade_limit": 20,
+                # Более строгий порог по числу сделок
+                "trade_limit": 10,
                 "stop_duration_candles": 12,
-                "max_allowed_drawdown": 0.03,
+                "max_allowed_drawdown": 0.02,
             },
             {
                 "method": "StoplossGuard",
@@ -140,28 +212,57 @@ class Strategy005ProRev16(IStrategy):
                 df["quoteVolume"] = np.nan
         df["vol_ma"] = df["quoteVolume"].rolling(96, min_periods=30).mean()
 
+        # ---- Информативные таймфреймы (избегаем lookahead) ----
+        pair = metadata["pair"]
+        htf_df = self.dp.get_pair_dataframe(pair=pair, timeframe=self.high_tf)
+        if htf_df is not None and len(htf_df) > 20:
+            if "ema_200" not in htf_df.columns:
+                htf_df["ema_200"] = ta.EMA(htf_df, timeperiod=200)
+            df = merge_informative_pair(
+                df, htf_df, self.timeframe, self.high_tf, ffill=True, suffix="4h"
+            )
+
+        # BTC/USDT informative data
+        btc_hour = self.dp.get_pair_dataframe(pair="BTC/USDT", timeframe=self.informative_timeframe)
+        if btc_hour is not None and len(btc_hour) > 20:
+            if "ema_200" not in btc_hour.columns:
+                btc_hour["ema_200"] = ta.EMA(btc_hour, timeperiod=200)
+            df = merge_informative_pair(
+                df, btc_hour, self.timeframe, self.informative_timeframe, ffill=True, suffix="btc"
+            )
+        btc_fast = self.dp.get_pair_dataframe(pair="BTC/USDT", timeframe=self.btc_fast_tf)
+        if btc_fast is not None and len(btc_fast) > 3:
+            df = merge_informative_pair(
+                df, btc_fast, self.timeframe, self.btc_fast_tf, ffill=True, suffix="btc_fast"
+            )
+        if self.use_btcd_filter:
+            btcd_df = self.dp.get_pair_dataframe(pair="BTC.D", timeframe=self.informative_timeframe)
+            if btcd_df is not None and len(btcd_df) > self.btcd_lookback:
+                df = merge_informative_pair(
+                    df, btcd_df, self.timeframe, self.informative_timeframe, ffill=True, suffix="btcd"
+                )
+
         return df
 
     # ---- Entry ---------------------------------------------------------
-    def _btcd_change_ok(self) -> bool:
+    def _btcd_change_ok(self, df: DataFrame) -> bool:
         if not self.use_btcd_filter:
             return True
-        df_btcd = self.dp.get_pair_dataframe(pair="BTC.D", timeframe=self.informative_timeframe)
-        if df_btcd is None or len(df_btcd) < self.btcd_lookback or df_btcd["close"].isna().all():
+        if "close_btcd" not in df.columns or df["close_btcd"].isna().all():
             return False
-        change = (df_btcd["close"].iloc[-1] / df_btcd["close"].iloc[-self.btcd_lookback] - 1) * 100
-        return change <= self.btcd_dom_threshold
+        if len(df) < self.btcd_lookback:
+            return False
+        change = (
+            df["close_btcd"].iloc[-1] / df["close_btcd"].iloc[-self.btcd_lookback] - 1
+        ) * 100
+        return change <= self.btcd_dom_threshold.value
 
     def populate_entry_trend(self, df: DataFrame, metadata: dict) -> DataFrame:
-        if not self._btcd_change_ok():
+        if not self._btcd_change_ok(df):
             return df
-        pair = metadata["pair"]
-        df_htf = self.dp.get_pair_dataframe(pair=pair, timeframe=self.high_tf)
-        if df_htf is None or len(df_htf) < 200:
+        if "close_4h" not in df.columns or "ema_200_4h" not in df.columns:
             return df
-        if "ema_200" not in df_htf.columns:
-            df_htf["ema_200"] = ta.EMA(df_htf, timeperiod=200)
-        up_trend = df_htf["close"].iloc[-1] > df_htf["ema_200"].iloc[-1]
+        up_trend = df["close_4h"].iloc[-1] > df["ema_200_4h"].iloc[-1]
 
         slope_cond = df["ema200_slope20_pct"] > 0.0005  # ≥ 0.05 %
 
@@ -182,27 +283,27 @@ class Strategy005ProRev16(IStrategy):
         return df
 
     # ---- Exit ----------------------------------------------------------
-    def _btcd_exit(self) -> bool:
+    def _btcd_exit(self, df: DataFrame) -> bool:
         if not self.use_btcd_filter:
             return False
-        df_btcd = self.dp.get_pair_dataframe(pair="BTC.D", timeframe=self.informative_timeframe)
-        if df_btcd is None or len(df_btcd) < self.btcd_lookback or df_btcd["close"].isna().all():
+        if "close_btcd" not in df.columns or df["close_btcd"].isna().all():
             return True
-        change = (df_btcd["close"].iloc[-1] / df_btcd["close"].iloc[-self.btcd_lookback] - 1) * 100
-        return change > self.btcd_dom_threshold
+        if len(df) < self.btcd_lookback:
+            return True
+        change = (
+            df["close_btcd"].iloc[-1] / df["close_btcd"].iloc[-self.btcd_lookback] - 1
+        ) * 100
+        return change > self.btcd_dom_threshold.value
 
     def populate_exit_trend(self, df: DataFrame, metadata: dict) -> DataFrame:
-        pair = metadata["pair"]
-        df_htf = self.dp.get_pair_dataframe(pair=pair, timeframe=self.high_tf)
-        global_bear = False
-        if df_htf is not None and len(df_htf) > 200:
-            if "ema_200" not in df_htf.columns:
-                df_htf["ema_200"] = ta.EMA(df_htf, timeperiod=200)
-            global_bear = (df_htf["close"].iloc[-2:] < df_htf["ema_200"].iloc[-2:]).all()
+        if "close_4h" in df.columns and "ema_200_4h" in df.columns:
+            global_bear = (df["close_4h"].iloc[-2:] < df["ema_200_4h"].iloc[-2:]).all()
+        else:
+            global_bear = False
 
         low_adx = df["adx"].rolling(6).max() < self.flat_adx_max.value
 
-        btcd_exit = self._btcd_exit()
+        btcd_exit = self._btcd_exit(df)
 
         df.loc[
             (
@@ -217,21 +318,6 @@ class Strategy005ProRev16(IStrategy):
         return df
 
     # ---- DCA -----------------------------------------------------------
-    def _atr_pct_for_pair(self, pair: str) -> float | None:
-        cache_key = f"atr_pct_{pair}"
-        now = datetime.utcnow()
-        cached = getattr(self, "_cache", {})
-        if cache_key in cached:
-            val, ts = cached[cache_key]
-            if now - ts < timedelta(minutes=5):
-                return val
-        self._cache = {k: v for k, v in cached.items() if now - v[1] < timedelta(minutes=5)}
-        df = self.dp.get_pair_dataframe(pair=pair, timeframe=self.timeframe)
-        if df is not None and "atr_pct" in df.columns:
-            val = float(df["atr_pct"].iloc[-1])
-            self._cache[cache_key] = (val, now)
-            return val
-        return None
 
     def adjust_trade_position(
         self,
@@ -247,7 +333,10 @@ class Strategy005ProRev16(IStrategy):
         current_exit_profit: float,
         **kwargs,
     ):
-        atr_pct = self._atr_pct_for_pair(trade.pair) or 3.0
+        df = self.dp.get_pair_dataframe(pair=trade.pair, timeframe=self.timeframe)
+        atr_pct = 3.0
+        if df is not None and "atr_pct" in df.columns:
+            atr_pct = float(df["atr_pct"].iloc[-1])
         max_adj_allowed = 1 if atr_pct > 8 else self.max_entry_position_adjustment
         if trade.has_open_orders or trade.nr_of_position_adjustments >= max_adj_allowed:
             return None
@@ -278,20 +367,14 @@ class Strategy005ProRev16(IStrategy):
         after_fill: bool = False,
         **kwargs,
     ):
-        base_sl = -0.04 if trade.nr_of_position_adjustments >= 1 else -0.09
+        """Stepped stoploss tightening as trade becomes profitable."""
+        base_sl = -0.04 if trade.nr_of_position_adjustments >= 1 else self.base_stoploss.value
         if after_fill:
             return base_sl
 
-        if current_profit > 0.12:
-            return stoploss_from_open(0.10, current_profit, trade.is_short, trade.leverage)
-        if current_profit > 0.07:
-            return stoploss_from_open(0.05, current_profit, trade.is_short, trade.leverage)
-        if current_profit > 0.04:
-            return stoploss_from_open(0.03, current_profit, trade.is_short, trade.leverage)
-        if current_profit > 0.02:
-            return stoploss_from_open(0.015, current_profit, trade.is_short, trade.leverage)
-        if current_profit > 0.01:
-            return stoploss_from_open(0.0, current_profit, trade.is_short, trade.leverage)
+        for prof, sl_val in sorted(zip(self.sl_profit_levels, self.sl_stop_values), reverse=True):
+            if current_profit > prof:
+                return stoploss_from_open(sl_val, current_profit, trade.is_short, trade.leverage)
         return base_sl
 
     # ---- Emergency exit ------------------------------------------------
@@ -304,17 +387,26 @@ class Strategy005ProRev16(IStrategy):
         current_profit: float,
         **kwargs,
     ):
-        btc_hour = self.dp.get_pair_dataframe(pair="BTC/USDT", timeframe=self.informative_timeframe)
-        btc_fast = self.dp.get_pair_dataframe(pair="BTC/USDT", timeframe=self.btc_fast_tf)
-        if btc_hour is not None and len(btc_hour) > 4 and btc_fast is not None and len(btc_fast) > 3:
-            if "ema_200" not in btc_hour.columns:
-                btc_hour["ema_200"] = ta.EMA(btc_hour, timeperiod=200)
-            now_p, prev3h_p = btc_hour["close"].iloc[-1], btc_hour["close"].iloc[-4]
-            prev30m_p = btc_fast["close"].iloc[-3]
+        """Emergency exits triggered by BTC weakness or trade timeout."""
+        pair_df = self.dp.get_pair_dataframe(pair=pair, timeframe=self.timeframe)
+        needed = {"close_btc", "close_btc_fast", "ema_200_btc", "volume_btc_fast"}
+        if (
+            pair_df is not None
+            and needed.issubset(pair_df.columns)
+            and not pair_df[list(needed)].isna().any().any()
+        ):
+            now_p = pair_df["close_btc"].iloc[-1]
+            prev3h_p = pair_df["close_btc"].shift(3).iloc[-1]
+            prev30m_p = pair_df["close_btc_fast"].shift(2).iloc[-1]
             drop3h = now_p / prev3h_p - 1
             drop30m = now_p / prev30m_p - 1
-            vol_spike = btc_fast["volume"].iloc[-1] > btc_fast["volume"].rolling(8).mean().iloc[-1] * 3
-            if (now_p < btc_hour["ema_200"].iloc[-1]) or (drop3h < -0.07) or (drop30m < -0.02 and vol_spike):
+            vol = pair_df["volume_btc_fast"].fillna(0)
+            vol_spike = vol.iloc[-1] > vol.rolling(8).mean().iloc[-1] * 3
+            if (
+                now_p < pair_df["ema_200_btc"].iloc[-1]
+                or drop3h < self.btc_drop3h_exit.value
+                or (drop30m < self.btc_drop30m_exit.value and vol_spike)
+            ):
                 return "btc_protect"
 
         lifespan = (current_time - trade.open_date_utc).total_seconds() / 60
