@@ -1,7 +1,7 @@
 
 {
     "$schema": "https://schema.freqtrade.io/schema.json",
-    "max_open_trades": 5,
+    "max_open_trades": 8,
     "stake_currency": "USDT",
     "stake_amount": 0.25,
     "tradable_balance_ratio": 0.85,
@@ -51,6 +51,8 @@
         },
         "ccxt_async_config": {},
         "pair_whitelist": [
+            "BTC/USDT",
+            "ETH/USDT"
         ],
         "pair_blacklist": [
         ]
@@ -65,7 +67,7 @@
         }
     ],
     "position_adjustment_enable": true,
-    "max_entry_position_adjustment": 1,
+    "max_entry_position_adjustment": 2,
     "telegram": {
         "enabled": true,
         "token": "secret",
