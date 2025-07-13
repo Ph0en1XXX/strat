@@ -273,6 +273,14 @@ class PhoeniX_V1(IStrategy):
                 append_timeframe=False,
                 suffix="btc_fast",
             )
+        # Корреляция с BTC за сутки на том же таймфрейме
+        if "close_btc_fast" in df.columns:
+            corr = (
+                df["close"].pct_change()
+                .rolling(96)
+                .corr(df["close_btc_fast"].pct_change())
+            )
+            df["corr_btc_fast"] = corr.fillna(0)
         if self.use_btcd_filter:
             btcd_df = self.dp.get_pair_dataframe(pair="BTC.D", timeframe=self.informative_timeframe)
             if btcd_df is not None and len(btcd_df) > self.btcd_lookback:
@@ -305,7 +313,11 @@ class PhoeniX_V1(IStrategy):
         if not self._btcd_change_ok(df):
             return df
         pair = metadata.get("pair")
-        if pair and self.dp.get_correlation(pair, "BTC/USDT", 96) > self.max_btc_corr.value:
+        if (
+            pair
+            and "corr_btc_fast" in df.columns
+            and df["corr_btc_fast"].iloc[-1] > self.max_btc_corr.value
+        ):
             return df
         if "close_4h" not in df.columns or "ema_200_4h" not in df.columns:
             return df
