@@ -14,6 +14,7 @@ example configuration ready for testing.
   }
   ```
   Bybit does not support this feature, so it is disabled in the provided config.
+- Ensure TA-Lib is installed on your system, or use pandas-ta as an alternative for indicator calculations.
 - Run `freqtrade analysis-reports lookahead-analysis` to verify that informative
  data does not introduce lookahead bias.
 
