@@ -148,7 +148,8 @@ class PhoeniX_V1(IStrategy):
     flat_adx_max = IntParameter(12, 18, default=15, space="sell", optimize=False)
 
     # -------------------------------------------------------------------
-    def protections(self):
+    @property
+    def protections(self) -> list:
         return [
             {
                 "method": "MaxDrawdown",
