@@ -61,6 +61,8 @@
             "ADA/USDT",
             "SOL/USDT",
             "DOGE/USDT"
+            "BTC/USDT",
+            "ETH/USDT"
         ],
         "pair_blacklist": [
         ]
@@ -76,6 +78,7 @@
     ],
     "position_adjustment_enable": true,
     "max_entry_position_adjustment": 3,
+    "max_entry_position_adjustment": 2,
     "telegram": {
         "enabled": true,
         "token": "secret",

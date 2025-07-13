@@ -92,9 +92,13 @@ class PhoeniX_V1(IStrategy):
     buy_min_atr_z = DecimalParameter(1.0, 3.5, default=1.5, space="buy", optimize=True)
     buy_adx_min = IntParameter(22, 38, default=25, space="buy", optimize=True)
     buy_vol_rel_min = DecimalParameter(1.2, 2.0, default=1.3, space="buy", optimize=True)
+    buy_min_atr_z = DecimalParameter(1.0, 3.5, default=1.5, space="buy", optimize=True)
+    buy_adx_min = IntParameter(22, 38, default=25, space="buy", optimize=True)
+    buy_vol_rel_min = DecimalParameter(1.2, 2.0, default=1.3, space="buy", optimize=True)
 
     atr_window = IntParameter(25, 60, default=28, space="buy", optimize=True)
     # Расширяем диапазон для более частых дозакупок на спокойных активах
+    dca_gap_pct = DecimalParameter(0.4, 1.2, default=0.6, space="buy", optimize=True)
     dca_gap_pct = DecimalParameter(0.4, 1.2, default=0.6, space="buy", optimize=True)
 
     # уровни прибыли и соответствующие им значения stoploss_from_open
@@ -145,6 +149,7 @@ class PhoeniX_V1(IStrategy):
     btc_drop3h_exit = DecimalParameter(-0.10, -0.05, default=-0.05, space="sell", optimize=False)
     btc_drop30m_exit = DecimalParameter(-0.03, -0.01, default=-0.015, space="sell", optimize=False)
 
+    max_trade_minutes = IntParameter(240, 720, default=480, space="sell", optimize=True)
     max_trade_minutes = IntParameter(240, 720, default=480, space="sell", optimize=True)
 
     flat_adx_max = IntParameter(12, 18, default=15, space="sell", optimize=False)
