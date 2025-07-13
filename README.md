@@ -41,5 +41,7 @@ If your exchange offers BTC.D or a similar dominance index, set
 3. Run backtesting with `freqtrade backtesting -c config.json -s PhoeniX_V1`.
    The sample configuration trades a small whitelist of six major pairs
    (BTC/USDT, ETH/USDT, XRP/USDT, ADA/USDT, SOL/USDT and DOGE/USDT).
+   The `VolumePairList` plugin then selects up to these six pairs by
+   descending quote volume for live trading or backtesting.
 
 4. Review the results and adjust parameters as needed.
