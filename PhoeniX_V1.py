@@ -29,7 +29,9 @@ class PhoeniX_V1(IStrategy):
     max_open_trades = 8  # новое ограничение совокупных позиций
 
     # BTC dominance
-    use_btcd_filter: bool = True  # можно выключить, если нет фида
+    # BTC dominance filter requires a BTC.D market, which Bybit lacks.
+    # Disabled by default to avoid errors when data is unavailable.
+    use_btcd_filter: bool = False
     btcd_dom_threshold = DecimalParameter(1.0, 4.0, default=2.0,
                                           space="sell", optimize=True)
     btcd_lookback: int = 24  # кол-во свечей informative_timeframe для расчёта изменения доминанса
@@ -229,7 +231,13 @@ class PhoeniX_V1(IStrategy):
             if "ema_200" not in htf_df.columns:
                 htf_df["ema_200"] = ta.EMA(htf_df, timeperiod=200)
             df = merge_informative_pair(
-                df, htf_df, self.timeframe, self.high_tf, ffill=True, suffix="4h"
+                df,
+                htf_df,
+                self.timeframe,
+                self.high_tf,
+                ffill=True,
+                append_timeframe=False,
+                suffix="4h",
             )
 
         # BTC/USDT informative data
@@ -238,18 +246,36 @@ class PhoeniX_V1(IStrategy):
             if "ema_200" not in btc_hour.columns:
                 btc_hour["ema_200"] = ta.EMA(btc_hour, timeperiod=200)
             df = merge_informative_pair(
-                df, btc_hour, self.timeframe, self.informative_timeframe, ffill=True, suffix="btc"
+                df,
+                btc_hour,
+                self.timeframe,
+                self.informative_timeframe,
+                ffill=True,
+                append_timeframe=False,
+                suffix="btc",
             )
         btc_fast = self.dp.get_pair_dataframe(pair="BTC/USDT", timeframe=self.btc_fast_tf)
         if btc_fast is not None and len(btc_fast) > 3:
             df = merge_informative_pair(
-                df, btc_fast, self.timeframe, self.btc_fast_tf, ffill=True, suffix="btc_fast"
+                df,
+                btc_fast,
+                self.timeframe,
+                self.btc_fast_tf,
+                ffill=True,
+                append_timeframe=False,
+                suffix="btc_fast",
             )
         if self.use_btcd_filter:
             btcd_df = self.dp.get_pair_dataframe(pair="BTC.D", timeframe=self.informative_timeframe)
             if btcd_df is not None and len(btcd_df) > self.btcd_lookback:
                 df = merge_informative_pair(
-                    df, btcd_df, self.timeframe, self.informative_timeframe, ffill=True, suffix="btcd"
+                    df,
+                    btcd_df,
+                    self.timeframe,
+                    self.informative_timeframe,
+                    ffill=True,
+                    append_timeframe=False,
+                    suffix="btcd",
                 )
 
         return df

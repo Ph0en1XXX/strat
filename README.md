@@ -27,6 +27,12 @@ to 3 for flexibility.
 
 Testing and hyperoptimization are recommended before live deployment.
 
+### BTC Dominance filter
+The strategy can optionally use a BTC.D pair to filter entries and exits.
+Bybit does not provide this market, so the filter is disabled by default.
+If your exchange offers BTC.D or a similar dominance index, set
+`use_btcd_filter = True` in the strategy to enable it.
+
 ## Usage
 
 1. Copy `config.json` and update your API keys and Telegram credentials.
