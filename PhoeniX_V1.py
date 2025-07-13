@@ -32,8 +32,13 @@ class PhoeniX_V1(IStrategy):
     # BTC dominance filter requires a BTC.D market, which Bybit lacks.
     # Disabled by default to avoid errors when data is unavailable.
     use_btcd_filter: bool = False
-    btcd_dom_threshold = DecimalParameter(1.0, 4.0, default=2.0,
-                                          space="sell", optimize=True)
+    btcd_dom_threshold = DecimalParameter(
+        1.5,
+        5.0,
+        default=3.0,
+        space="sell,buy",
+        optimize=True,
+    )
     btcd_lookback: int = 24  # кол-во свечей informative_timeframe для расчёта изменения доминанса
 
     can_short = False
@@ -83,23 +88,28 @@ class PhoeniX_V1(IStrategy):
         df = self.dp.get_pair_dataframe(pair=pair, timeframe=self.timeframe)
         if df is not None and "atr_pct" in df.columns:
             atr_pct = df["atr_pct"].iloc[-1]
-            return max(atr_pct * self.dynamic_roi_mult.value / 100, self.min_dynamic_roi.value)
+            mult = self.dynamic_roi_mult.value
+            if atr_pct > 6:
+                mult = max(mult, 2.0)
+            elif atr_pct < 3:
+                mult = min(mult, 1.2)
+            return max(atr_pct * mult / 100, self.min_dynamic_roi.value)
         return self.min_dynamic_roi.value
 
     trailing_stop = False  # конфликтует с custom_stoploss
 
     # ---- Гипер‑параметры ----------------------------------------------
-    buy_min_atr_z = DecimalParameter(1.0, 3.5, default=1.5, space="buy", optimize=True)
-    buy_adx_min = IntParameter(22, 38, default=25, space="buy", optimize=True)
-    buy_vol_rel_min = DecimalParameter(1.2, 2.0, default=1.3, space="buy", optimize=True)
-    buy_min_atr_z = DecimalParameter(1.0, 3.5, default=1.5, space="buy", optimize=True)
+    buy_min_atr_z = DecimalParameter(1.2, 3.5, default=1.4,
+                                    space="buy", optimize=True)
     buy_adx_min = IntParameter(22, 38, default=25, space="buy", optimize=True)
     buy_vol_rel_min = DecimalParameter(1.2, 2.0, default=1.3, space="buy", optimize=True)
 
-    atr_window = IntParameter(25, 60, default=28, space="buy", optimize=True)
+    atr_window = IntParameter(42, 60, default=50, space="buy", optimize=True)
     # Расширяем диапазон для более частых дозакупок на спокойных активах
     dca_gap_pct = DecimalParameter(0.4, 1.2, default=0.6, space="buy", optimize=True)
-    dca_gap_pct = DecimalParameter(0.4, 1.2, default=0.6, space="buy", optimize=True)
+
+    # Max correlation with BTC/USDT allowed for entries
+    max_btc_corr = DecimalParameter(0.5, 0.95, default=0.8, space="buy", optimize=False)
 
     # уровни прибыли и соответствующие им значения stoploss_from_open
     sl_profit_1 = DecimalParameter(0.005, 0.03, default=0.01,
@@ -150,7 +160,6 @@ class PhoeniX_V1(IStrategy):
     btc_drop30m_exit = DecimalParameter(-0.03, -0.01, default=-0.015, space="sell", optimize=False)
 
     max_trade_minutes = IntParameter(240, 720, default=480, space="sell", optimize=True)
-    max_trade_minutes = IntParameter(240, 720, default=480, space="sell", optimize=True)
 
     flat_adx_max = IntParameter(12, 18, default=15, space="sell", optimize=False)
 
@@ -196,7 +205,11 @@ class PhoeniX_V1(IStrategy):
             ("BTC/USDT", self.high_tf),
         ]
         if self.use_btcd_filter:
-            pairs.append(("BTC.D", self.informative_timeframe))
+            if "BTC.D" in self.dp.available_pairs():
+                pairs.append(("BTC.D", self.informative_timeframe))
+            else:
+                # disable filter if pair is unavailable
+                self.use_btcd_filter = False
         return pairs
 
     # ---- Индикаторы ----------------------------------------------------
@@ -270,6 +283,14 @@ class PhoeniX_V1(IStrategy):
                 append_timeframe=False,
                 suffix="btc_fast",
             )
+        # Корреляция с BTC за сутки на том же таймфрейме
+        if "close_btc_fast" in df.columns:
+            corr = (
+                df["close"].pct_change()
+                .rolling(96)
+                .corr(df["close_btc_fast"].pct_change())
+            )
+            df["corr_btc_fast"] = corr.fillna(0)
         if self.use_btcd_filter:
             btcd_df = self.dp.get_pair_dataframe(pair="BTC.D", timeframe=self.informative_timeframe)
             if btcd_df is not None and len(btcd_df) > self.btcd_lookback:
@@ -289,6 +310,8 @@ class PhoeniX_V1(IStrategy):
     def _btcd_change_ok(self, df: DataFrame) -> bool:
         if not self.use_btcd_filter:
             return True
+        if "BTC.D" not in self.dp.available_pairs():
+            return True
         if "close_btcd" not in df.columns or df["close_btcd"].isna().all():
             return False
         if len(df) < self.btcd_lookback:
@@ -301,11 +324,18 @@ class PhoeniX_V1(IStrategy):
     def populate_entry_trend(self, df: DataFrame, metadata: dict) -> DataFrame:
         if not self._btcd_change_ok(df):
             return df
+        pair = metadata.get("pair")
+        if (
+            pair
+            and "corr_btc_fast" in df.columns
+            and df["corr_btc_fast"].iloc[-1] > self.max_btc_corr.value
+        ):
+            return df
         if "close_4h" not in df.columns or "ema_200_4h" not in df.columns:
             return df
         up_trend = df["close_4h"].iloc[-1] > df["ema_200_4h"].iloc[-1]
 
-        slope_cond = ta.LINEARREG_SLOPE(df["ema_200"], timeperiod=96) > 0.0004
+        slope_cond = ta.LINEARREG_SLOPE(df["ema_200"], timeperiod=96) > 0.0006
 
         df.loc[
             (
@@ -326,6 +356,8 @@ class PhoeniX_V1(IStrategy):
     # ---- Exit ----------------------------------------------------------
     def _btcd_exit(self, df: DataFrame) -> bool:
         if not self.use_btcd_filter:
+            return False
+        if "BTC.D" not in self.dp.available_pairs():
             return False
         if "close_btcd" not in df.columns or df["close_btcd"].isna().all():
             return True
@@ -416,7 +448,9 @@ class PhoeniX_V1(IStrategy):
 
         for prof, sl_val in sorted(zip(self.sl_profit_levels, self.sl_stop_values), reverse=True):
             if current_profit > prof:
-                return stoploss_from_open(sl_val, current_profit, trade.is_short, trade.leverage)
+                is_short = getattr(trade, "is_short", False)
+                leverage = getattr(trade, "leverage", 1.0)
+                return stoploss_from_open(sl_val, current_profit, is_short, leverage)
         return base_sl
 
     # ---- Emergency exit ------------------------------------------------
@@ -440,6 +474,8 @@ class PhoeniX_V1(IStrategy):
             now_p = pair_df["close_btc"].iloc[-1]
             prev3h_p = pair_df["close_btc"].shift(3).iloc[-1]
             prev30m_p = pair_df["close_btc_fast"].shift(2).iloc[-1]
+            if np.isnan(prev3h_p) or np.isnan(prev30m_p):
+                return None
             drop3h = now_p / prev3h_p - 1
             drop30m = now_p / prev30m_p - 1
             vol_ser = None
@@ -452,10 +488,15 @@ class PhoeniX_V1(IStrategy):
                 vol_spike = vol_ser.iloc[-1] > vol_ser.rolling(8).mean().iloc[-1] * 3
             else:
                 vol_spike = False
+            atr_pct = pair_df["atr_pct"].iloc[-1] if "atr_pct" in pair_df.columns else 3.0
+            dynamic_drop = -max(0.03, atr_pct / 100 * 1.2)
             if (
                 now_p < pair_df["ema_200_btc"].iloc[-1]
-                or drop3h < self.btc_drop3h_exit.value
-                or (drop30m < self.btc_drop30m_exit.value and vol_spike)
+                or drop3h < max(self.btc_drop3h_exit.value, dynamic_drop)
+                or (
+                    drop30m < max(self.btc_drop30m_exit.value, dynamic_drop / 2)
+                    and vol_spike
+                )
             ):
                 return "btc_protect"
 

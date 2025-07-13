@@ -55,12 +55,6 @@
         },
         "ccxt_async_config": {},
         "pair_whitelist": [
-            "BTC/USDT",
-            "ETH/USDT",
-            "XRP/USDT",
-            "ADA/USDT",
-            "SOL/USDT",
-            "DOGE/USDT"
         ],
         "pair_blacklist": [
         ]
@@ -70,7 +64,7 @@
             "method": "VolumePairList",
             "number_assets": 6,
             "sort_key": "quoteVolume",
-            "min_value": 500000,
+            "min_value": 100000,
             "refresh_period": 1800
         }
     ],
