@@ -32,4 +32,5 @@ Testing and hyperoptimization are recommended before live deployment.
 1. Copy `config.json` and update your API keys and Telegram credentials.
 2. Place `PhoeniX_V1.py` in your `user_data/strategies` folder.
 3. Run backtesting with `freqtrade backtesting -c config.json -s PhoeniX_V1`.
+
 4. Review the results and adjust parameters as needed.
